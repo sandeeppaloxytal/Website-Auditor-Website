@@ -260,6 +260,7 @@ async function watch(cfg, runId) {
   currentRun = { id: runId, cfg };
   els.statusCard.hidden = false;
   els.resultRow.hidden = true;
+  els.download.hidden = true;
   els.resultMsg.textContent = '';
   els.bar.dataset.pct = '0';
   els.bar.style.width = '0%';
@@ -294,10 +295,8 @@ async function watch(cfg, runId) {
       els.bar.dataset.pct = '100';
       els.bar.style.width = '100%';
       els.resultRow.hidden = false;
-      els.download.disabled = false;
-      els.resultMsg.textContent = run.conclusion === 'success'
-        ? 'Done. Download the report to open it in your browser or share it.'
-        : 'The run did not finish cleanly. The report may still exist — try the download, or open the run on GitHub for details.';
+      els.resultMsg.textContent = 'Looking for the report…';
+      showDownload(cfg, runId, generation);
       refreshRecent(cfg);
       return;
     }
@@ -392,74 +391,34 @@ async function startScan() {
 
 /* ---------------- report download ---------------- */
 
-// Minimal zip reader: finds one file in the artifact zip and inflates it with
-// the browser's built-in DecompressionStream (no library needed).
-async function extractFromZip(buffer, wanted) {
-  const dv = new DataView(buffer);
-  const bytes = new Uint8Array(buffer);
-  let eocd = -1;
-  for (let i = buffer.byteLength - 22; i >= Math.max(0, buffer.byteLength - 65557); i--) {
-    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
-  }
-  if (eocd < 0) throw new Error('The downloaded artifact is not a valid zip file.');
-  const count = dv.getUint16(eocd + 10, true);
-  let p = dv.getUint32(eocd + 16, true);
-  for (let n = 0; n < count; n++) {
-    if (dv.getUint32(p, true) !== 0x02014b50) break;
-    const method = dv.getUint16(p + 10, true);
-    const compressed = dv.getUint32(p + 20, true);
-    const nameLen = dv.getUint16(p + 28, true);
-    const extraLen = dv.getUint16(p + 30, true);
-    const commentLen = dv.getUint16(p + 32, true);
-    const localOffset = dv.getUint32(p + 42, true);
-    const name = new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + nameLen));
-    if (name === wanted) {
-      if (compressed === 0xffffffff) throw new Error('The report is too large for in-browser download. Use "Open run on GitHub" instead.');
-      const start = localOffset + 30 + dv.getUint16(localOffset + 26, true) + dv.getUint16(localOffset + 28, true);
-      const data = bytes.subarray(start, start + compressed);
-      if (method === 0) return data;
-      if (method === 8) {
-        const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-        return new Uint8Array(await new Response(stream).arrayBuffer());
-      }
-      throw new Error('The artifact uses an unsupported zip compression method.');
-    }
-    p += 46 + nameLen + extraLen + commentLen;
-  }
-  throw new Error(`${wanted} was not found inside the artifact.`);
-}
+// The page cannot fetch the artifact itself: GitHub redirects artifact downloads
+// to storage that sends no CORS headers, so a script's request is always
+// blocked (confirmed on the first real run). Instead the artifact's own page
+// URL is offered as a normal link — the browser follows it with the visitor's
+// GitHub session, which is what the Actions UI does. This metadata call is
+// allowed (api.github.com sends CORS headers).
+const REPORT_ARTIFACT_NAMES = ['site-audit-report', 'report.html'];
 
-async function downloadReport() {
-  if (!currentRun) return;
-  const { cfg, id } = currentRun;
-  els.download.disabled = true;
-  els.resultMsg.textContent = 'Downloading the report…';
+async function showDownload(cfg, runId, generation) {
+  els.download.hidden = true;
   try {
-    const list = await api(cfg, `/repos/${cfg.repo}/actions/runs/${id}/artifacts?name=site-audit-report`);
-    const artifact = (list.artifacts || []).find((a) => a.name === 'site-audit-report' && !a.expired);
-    if (!artifact) throw new ApiError('No report was produced for this run (it may have expired after 90 days, or the run failed before the report step).');
-    let res;
-    try {
-      res = await fetch(artifact.archive_download_url, { headers: authHeaders(cfg) });
-    } catch {
-      throw new ApiError('Your browser could not download the artifact directly. Use "Open run on GitHub" and download it from the Artifacts section.');
+    const list = await api(cfg, `/repos/${cfg.repo}/actions/runs/${runId}/artifacts?per_page=100`);
+    if (generation !== watchGeneration) return;
+    const artifact = (list.artifacts || []).find((a) => REPORT_ARTIFACT_NAMES.includes(a.name) && !a.expired);
+    if (!artifact) {
+      els.resultMsg.textContent = 'No report is available for this run — it may have expired (reports are kept 90 days) or the run failed before the report step. Open the run on GitHub for details.';
+      return;
     }
-    if (!res.ok) throw new ApiError(await explain(res));
-    const html = await extractFromZip(await res.arrayBuffer(), 'report.html');
-    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `site-audit-report-${id}.html`;
-    document.body.append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    els.resultMsg.textContent = 'Report downloaded. Open the saved file in your browser.';
+    const mb = artifact.size_in_bytes ? ` (${(artifact.size_in_bytes / 1048576).toFixed(1)} MB)` : '';
+    els.download.href = `https://github.com/${cfg.repo}/actions/runs/${runId}/artifacts/${artifact.id}`;
+    els.download.textContent = `Download report${mb}`;
+    els.download.hidden = false;
+    els.resultMsg.textContent = artifact.name === 'report.html'
+      ? 'Opens GitHub\'s download — you need to be signed in to GitHub with access to the repository.'
+      : 'Opens GitHub\'s download — you need to be signed in to GitHub with access to the repository. It arrives as a .zip: unzip it to get report.html.';
   } catch (err) {
     els.resultMsg.textContent = '';
     showError(err.message);
-  } finally {
-    els.download.disabled = false;
   }
 }
 
@@ -467,7 +426,6 @@ async function downloadReport() {
 
 els.connect.addEventListener('click', connect);
 els.run.addEventListener('click', startScan);
-els.download.addEventListener('click', downloadReport);
 els.forget.addEventListener('click', () => {
   store.del('localStorage', 'wa.token');
   store.del('sessionStorage', 'wa.token');

@@ -24,7 +24,8 @@ button, .button-link {
   font: inherit; font-size: 0.9rem; font-weight: 600; padding: 9px 18px; border-radius: 8px; cursor: pointer;
   border: 1px solid var(--border); background: transparent; color: var(--text); text-decoration: none; display: inline-block;
 }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary, .button-link.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.button-link[hidden] { display: none; }
 button.secondary:hover, .button-link:hover { border-color: var(--accent); }
 button.link { border: none; color: var(--muted); font-weight: 400; padding: 9px 4px; text-decoration: underline; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
