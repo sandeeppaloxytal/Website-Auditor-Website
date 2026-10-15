@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://api.github.com http://localhost:* http://127.0.0.1:*; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>Website Auditor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Website Auditor</h1>
+  <p>Enter a website, press <strong>Run scan</strong>, and follow every stage live. The audit runs in your GitHub repository's Actions — this page only starts it and shows progress.</p>
+</header>
+
+<main>
+  <section class="card" id="setup-card">
+    <h2>1. Connect to GitHub <span class="status-pill" id="conn-pill" hidden></span></h2>
+    <div class="grid2">
+      <label>Repository
+        <input id="repo" type="text" placeholder="owner/repository" autocomplete="off" spellcheck="false">
+      </label>
+      <label>Workflow file
+        <input id="workflow" type="text" value="audit.yml" autocomplete="off" spellcheck="false">
+      </label>
+    </div>
+    <label>Personal access token
+      <input id="token" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
+    </label>
+    <label class="check"><input id="remember" type="checkbox"> Remember the token on this device (otherwise it is forgotten when you close the tab)</label>
+    <div class="row">
+      <button id="connect" type="button" class="secondary">Verify connection</button>
+      <button id="forget" type="button" class="link">Forget token</button>
+    </div>
+    <details>
+      <summary>How do I get a token?</summary>
+      <ol>
+        <li>GitHub → Settings → Developer settings → Personal access tokens → <strong>Fine-grained tokens</strong> → Generate new token.</li>
+        <li><em>Repository access</em>: <strong>Only select repositories</strong> → pick this audit repository.</li>
+        <li><em>Permissions → Repository</em>: <strong>Actions: Read and write</strong>. Nothing else is needed.</li>
+        <li>Paste it above. It is sent only to <code>api.github.com</code> and never stored in the repository.</li>
+      </ol>
+      <p class="note">Only people who already have access to the repository can create a working token, so this page gives nobody new access.</p>
+    </details>
+  </section>
+
+  <section class="card" id="scan-card">
+    <h2>2. What should be scanned?</h2>
+    <label>Website URL(s)
+      <textarea id="urls" rows="4" placeholder="https://www.example.com/&#10;https://www.example.com/shop/&#10;https://www.example.com/sitemap.xml" spellcheck="false"></textarea>
+    </label>
+    <p class="note">One per line. A <code>sitemap.xml</code> link is expanded into the pages it lists. Only public http(s) sites can be scanned. Leave empty to use the repository's saved <code>SITE_URLS</code> list.</p>
+    <div class="grid2">
+      <label>Label for this run (optional)
+        <input id="note" type="text" placeholder="e.g. post-deploy check" maxlength="80" autocomplete="off">
+      </label>
+      <label>Max pages per sitemap
+        <input id="sitemap-limit" type="number" min="1" max="100" value="20">
+      </label>
+    </div>
+    <div id="url-problems" class="problems" hidden></div>
+    <div class="row">
+      <button id="run" type="button" class="primary">Run scan</button>
+      <span id="run-hint" class="note"></span>
+    </div>
+    <p class="note warn-note">Only scan sites you are allowed to test. The URLs you enter are visible to anyone with access to the repository's Actions runs.</p>
+  </section>
+
+  <section class="card" id="status-card" hidden>
+    <h2>3. Progress <span class="status-pill" id="run-pill"></span></h2>
+    <p id="run-meta" class="note"></p>
+    <div class="progress"><div id="progress-bar"></div></div>
+    <ul id="stages" class="stages"></ul>
+    <div class="row" id="result-row" hidden>
+      <button id="download" type="button" class="primary">Download report.html</button>
+      <a id="open-run" class="button-link" target="_blank" rel="noopener noreferrer">Open run on GitHub ↗</a>
+    </div>
+    <p id="result-msg" class="note"></p>
+  </section>
+
+  <section class="card" id="recent-card" hidden>
+    <h2>Recent runs</h2>
+    <ul id="recent" class="recent"></ul>
+  </section>
+
+  <p id="global-error" class="error" hidden></p>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
